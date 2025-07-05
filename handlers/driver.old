@@ -1,0 +1,158 @@
+package handlers
+
+import (
+	"database/sql"
+	"encoding/json"
+	"net/http"
+
+	"goexpress-api/middleware"
+	"goexpress-api/models"
+	"goexpress-api/utils"
+	"github.com/go-playground/validator/v10"
+)
+
+type DriverHandler struct {
+	db        *sql.DB
+	validator *validator.Validate
+}
+
+func NewDriverHandler(db *sql.DB) *DriverHandler {
+	return &DriverHandler{
+		db:        db,
+		validator: validator.New(),
+	}
+}
+
+// @Summary Get all drivers
+// @Description Get all drivers with their details and stats
+// @Tags drivers
+// @Security ApiKeyAuth
+// @Produce json
+// @Param status query string false "Filter by status"
+// @Success 200 {array} models.Driver
+// @Router /api/drivers [get]
+func (h *DriverHandler) GetDrivers(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value(middleware.UserContextKey).(*utils.Claims)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Only admin can view all drivers
+	if claims.Role != "admin" {
+		http.Error(w, "Insufficient permissions", http.StatusForbidden)
+		return
+	}
+
+	statusFilter := r.URL.Query().Get("status")
+	
+	query := `
+		SELECT 
+			u.id, u.name, u.email, u.role, u.created_at, u.updated_at
+		FROM users u
+		WHERE u.role = 'driver'`
+
+	var args []interface{}
+
+	if statusFilter != "" {
+		// For now, we'll just return all drivers since we don't have a drivers table
+		// In a real implementation, you'd join with a drivers table
+	}
+
+	query += " ORDER BY u.created_at DESC"
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var drivers []models.Driver
+	for rows.Next() {
+		var d models.Driver
+		err := rows.Scan(
+			&d.ID, &d.Name, &d.Email, &d.Role, &d.CreatedAt, &d.UpdatedAt,
+		)
+		if err != nil {
+			http.Error(w, "Failed to scan driver", http.StatusInternalServerError)
+			return
+		}
+		// Set default values for driver-specific fields
+		d.Status = "available"
+		d.Rating = 4.5
+		d.TotalDeliveries = 0
+		drivers = append(drivers, d)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(drivers)
+}
+
+// @Summary Get driver stats
+// @Description Get driver statistics (admin only)
+// @Tags drivers
+// @Security ApiKeyAuth
+// @Produce json
+// @Success 200 {object} models.DriverStats
+// @Router /api/drivers/stats [get]
+func (h *DriverHandler) GetDriverStats(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value(middleware.UserContextKey).(*utils.Claims)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Only admin can view stats
+	if claims.Role != "admin" {
+		http.Error(w, "Insufficient permissions", http.StatusForbidden)
+		return
+	}
+
+	var stats models.DriverStats
+
+	// Get driver counts from users table
+	err := h.db.QueryRow(`
+		SELECT 
+			COUNT(*) as total_drivers
+		FROM users WHERE role = 'driver'`,
+	).Scan(&stats.TotalDrivers)
+
+	if err != nil {
+		http.Error(w, "Failed to get driver stats", http.StatusInternalServerError)
+		return
+	}
+
+	// Set default values for other stats
+	stats.AvailableDrivers = stats.TotalDrivers
+	stats.BusyDrivers = 0
+	stats.OfflineDrivers = 0
+	stats.TotalDeliveries = 0
+	stats.AverageRating = 4.5
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
+// Placeholder methods for other driver operations
+func (h *DriverHandler) GetDriver(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
+}
+
+func (h *DriverHandler) CreateDriver(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
+}
+
+func (h *DriverHandler) UpdateDriver(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
+}
+
+func (h *DriverHandler) DeleteDriver(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
+}
+
+func (h *DriverHandler) GetDriverShipments(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
+}
+
+
